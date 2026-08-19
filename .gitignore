@@ -1,0 +1,33 @@
+# Vivado generated files and folders
+*.cache/
+*.hw/
+*.ip_user_files/
+*.sim/
+*.runs/
+*.gen/
+
+# Vivado temporary files
+*.jou
+*.log
+*.str
+*.backup.*
+vivado*.backup.*
+
+# XSim generated files
+xsim.dir/
+webtalk/
+webtalk.jou
+webtalk.log
+
+# Generated reports
+*.rpt
+*.pb
+
+# Temporary files
+*.tmp
+*.temp
+*.swp
+
+# OS files
+Thumbs.db
+Desktop.ini

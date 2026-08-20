@@ -1,4 +1,4 @@
-# Parameterized Synchronous FIFO
+# Parameterized Synchronous & Asynchronous FIFO
 
 ## Project Description
 This project implements a parameterized Synchronous FIFO (First-In-First-Out) using Verilog HDL. The FIFO stores data and retrieves it in the same order in which it was written.

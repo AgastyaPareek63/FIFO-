@@ -262,15 +262,13 @@ module async_fifo #(
     );
 
 
-    //==================================================
     // FIFO memory
-    //==================================================
 
     fifo_memory #(
         .DATA_WIDTH(ECC_WIDTH),
         .DEPTH(DEPTH)
     ) mem_inst (
-
+    
         .wr_clk(wr_clk),
         .wr_en(wr_en && !full),// write when wr_en = 1 and FIFO is not full
         .wr_addr(wr_bin[ADDR_WIDTH-1:0]),// The lower bits of the binary write pointer select the memory the additional pointer bit represents wrap-around info.

@@ -1,15 +1,22 @@
 `timescale 1ns/1ps
 
+// The decoder calculates the Hamming syndrome and overall parity to detect
+// single-bit and double-bit errors.
+// For a single-bit error, the syndrome identifies the error bit so it
+// can be corrected before the original 8-bit data is extracted.
+
 module ecc_decoder(
 
-    input wire [12:0] code_in,
-    output wire [7:0] data_out,
+    input wire [12:0] code_in,// received codeword
+    output wire [7:0] data_out,// recovered data
     output wire single_error,
     output wire double_error
 
 );
 
     // Received bits
+    
+    // Separating the received 13-bit codeword into its Hamming, parity bits, data bits and overall parity bit.
 
     wire p1 = code_in[0];
     wire p2 = code_in[1];
@@ -29,7 +36,7 @@ module ecc_decoder(
     wire d6 = code_in[10];
     wire d7 = code_in[11];
 
-    wire p0 = code_in[12];
+    wire p0 = code_in[12];// overall parity bit
 
 
     // Syndrome calculation
@@ -51,7 +58,7 @@ module ecc_decoder(
 
     // Overall parity
 
-    wire parity_check;
+    wire parity_check;// This check is combined with the syndrome to distinguish between single-bit and double-bit errors.
 
     assign parity_check =
         p0 ^ p1 ^ p2 ^ p4 ^ p8 ^
@@ -62,10 +69,10 @@ module ecc_decoder(
     // Error detection
 
     assign single_error =
-        parity_check;
+        parity_check;// odd no. of error bits, single bit error
 
     assign double_error =
-        !parity_check && (syndrome != 0);
+        !parity_check && (syndrome != 0);// if syndrome = 1 and parity check = 0, double bit error 
 
 
     // Correct the received code
@@ -73,9 +80,10 @@ module ecc_decoder(
     reg [12:0] corrected;
 
     always @(*) begin
-
+        // Default: assume the received codeword is correct.       
         corrected = code_in;
-
+        // Correct a single-bit error when the syndrome identifies
+        // a valid Hamming-code position.
         if (single_error && (syndrome != 0)) begin
 
             if (syndrome <= 12)
@@ -88,6 +96,8 @@ module ecc_decoder(
 
 
     // Extract data bits
+    
+     // Remove the Hamming parity bits and overall parity bit.
 
     assign data_out = {
         corrected[11],

@@ -1,16 +1,24 @@
 `timescale 1ns/1ps
 
+// Converts 8-bit input data into a 13-bit ECC codeword using Hamming-code
+// parity bits along with one overall parity bit for SECDED (Single Error
+// Correction, Double Error Detection).
+//
+// The 13-bit codeword contains:
+// 8 original data bits
+// 4 Hamming parity bits
+// 1 overall parity bit
+
 module ecc_encoder(
 
-    input  wire [7:0]  data_in,
-    output wire [12:0] code_out
+    input  wire [7:0]  data_in,// input data 
+    output wire [12:0] code_out// codeword
 
 );
 
-    //--------------------------------------------------
     // Data Bits
-    //--------------------------------------------------
 
+// Individual data bits are given separate names to make the Hamming parity equations easier to understand.
     wire d0 = data_in[0];
     wire d1 = data_in[1];
     wire d2 = data_in[2];
@@ -20,9 +28,7 @@ module ecc_encoder(
     wire d6 = data_in[6];
     wire d7 = data_in[7];
 
-    //--------------------------------------------------
     // Hamming Parity Bits
-    //--------------------------------------------------
 
     // Position 1
     wire p1 = d0 ^ d1 ^ d3 ^ d4 ^ d6;
@@ -36,36 +42,15 @@ module ecc_encoder(
     // Position 8
     wire p8 = d4 ^ d5 ^ d6 ^ d7;
 
-    //--------------------------------------------------
     // Overall SECDED Parity
-    //--------------------------------------------------
 
-    wire p0;
+    wire p0;// overall parity bit
 
     assign p0 =
         p1 ^ p2 ^ p4 ^ p8 ^
         d0 ^ d1 ^ d2 ^ d3 ^
         d4 ^ d5 ^ d6 ^ d7;
 
-    //--------------------------------------------------
-    // Code Word
-    //
-    // Bit Position (1-based)
-    //
-    //  1  -> p1
-    //  2  -> p2
-    //  3  -> d0
-    //  4  -> p4
-    //  5  -> d1
-    //  6  -> d2
-    //  7  -> d3
-    //  8  -> p8
-    //  9  -> d4
-    // 10  -> d5
-    // 11  -> d6
-    // 12  -> d7
-    // 13  -> p0
-    //--------------------------------------------------
 
     assign code_out =
     {

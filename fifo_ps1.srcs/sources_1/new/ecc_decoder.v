@@ -1,113 +1,196 @@
 `timescale 1ns/1ps
 
-// The decoder calculates the Hamming syndrome and overall parity to detect
-// single-bit and double-bit errors.
-// For a single-bit error, the syndrome identifies the error bit so it
-// can be corrected before the original 8-bit data is extracted.
+// ============================================================
+// Parameterized SECDED ECC Decoder
+//
+// Corrects single-bit errors and detects double-bit errors.
+//
+// DATA_WIDTH  : Original user data width
+// PARITY_BITS : Number of Hamming parity bits
+//
+// Codeword format:
+//     Hamming code + overall parity bit
+//
+// ECC_WIDTH = DATA_WIDTH + PARITY_BITS + 1
+// ============================================================
 
-module ecc_decoder(
+module ecc_decoder #(
+    parameter DATA_WIDTH  = 8,
+    parameter PARITY_BITS = 4
+)(
+    input wire [DATA_WIDTH+PARITY_BITS:0] code_in,
 
-    input wire [12:0] code_in,// received codeword
-    output wire [7:0] data_out,// recovered data
-    output wire single_error,
-    output wire double_error
+    output reg [DATA_WIDTH-1:0] data_out,
 
+    output reg single_error,
+    output reg double_error
 );
 
-    // Received bits
-    
-    // Separating the received 13-bit codeword into its Hamming, parity bits, data bits and overall parity bit.
-
-    wire p1 = code_in[0];
-    wire p2 = code_in[1];
-
-    wire d0 = code_in[2];
-
-    wire p4 = code_in[3];
-
-    wire d1 = code_in[4];
-    wire d2 = code_in[5];
-    wire d3 = code_in[6];
-
-    wire p8 = code_in[7];
-
-    wire d4 = code_in[8];
-    wire d5 = code_in[9];
-    wire d6 = code_in[10];
-    wire d7 = code_in[11];
-
-    wire p0 = code_in[12];// overall parity bit
+    // Number of bits excluding the overall parity bit.
+    localparam HAMMING_WIDTH =
+        DATA_WIDTH + PARITY_BITS;
 
 
-    // Syndrome calculation
+    // Received Hamming portion.
+    reg [HAMMING_WIDTH-1:0] hamming_code;
 
-    wire s1;
-    wire s2;
-    wire s4;
-    wire s8;
-
-    assign s1 = p1 ^ d0 ^ d1 ^ d3 ^ d4 ^ d6;
-    assign s2 = p2 ^ d0 ^ d2 ^ d3 ^ d5 ^ d6;
-    assign s4 = p4 ^ d1 ^ d2 ^ d3 ^ d7;
-    assign s8 = p8 ^ d4 ^ d5 ^ d6 ^ d7;
-
-    wire [3:0] syndrome;
-
-    assign syndrome = {s8, s4, s2, s1};
+    // Corrected Hamming portion.
+    reg [HAMMING_WIDTH-1:0] corrected_code;
 
 
-    // Overall parity
-
-    wire parity_check;// This check is combined with the syndrome to distinguish between single-bit and double-bit errors.
-
-    assign parity_check =
-        p0 ^ p1 ^ p2 ^ p4 ^ p8 ^
-        d0 ^ d1 ^ d2 ^ d3 ^
-        d4 ^ d5 ^ d6 ^ d7;
+    // Syndrome and overall parity result.
+    reg [PARITY_BITS-1:0] syndrome;
+    reg parity_check;
 
 
-    // Error detection
-
-    assign single_error =
-        parity_check;// odd no. of error bits, single bit error
-
-    assign double_error =
-        !parity_check && (syndrome != 0);// if syndrome = 1 and parity check = 0, double bit error 
+    integer position;
+    integer parity_index;
+    integer data_index;
+    integer error_position;
 
 
-    // Correct the received code
+    // ========================================================
+    // ECC decoding
+    // ========================================================
 
-    reg [12:0] corrected;
+    always @(*)
+    begin
 
-    always @(*) begin
-        // Default: assume the received codeword is correct.       
-        corrected = code_in;
-        // Correct a single-bit error when the syndrome identifies
-        // a valid Hamming-code position.
-        if (single_error && (syndrome != 0)) begin
+        // Start with the received Hamming bits.
+        hamming_code = code_in[HAMMING_WIDTH-1:0];
 
-            if (syndrome <= 12)
-                corrected[syndrome - 1] =
-                    ~corrected[syndrome - 1];
+        // Calculate overall parity.
+        //
+        // For a correct codeword this XOR is zero.
+        // A value of one means an odd number of bits
+        // are different from the original codeword.
+        parity_check = ^code_in;
+
+
+        // ----------------------------------------------------
+        // Calculate Hamming syndrome
+        // ----------------------------------------------------
+
+        syndrome = {PARITY_BITS{1'b0}};
+
+        for (parity_index = 0;
+             parity_index < PARITY_BITS;
+             parity_index = parity_index + 1)
+        begin
+
+            for (position = 1;
+                 position <= HAMMING_WIDTH;
+                 position = position + 1)
+            begin
+
+                // A parity bit checks all positions whose
+                // binary address contains that parity bit.
+                if ((position & (1 << parity_index)) != 0)
+                begin
+                    syndrome[parity_index] =
+                        syndrome[parity_index] ^
+                        hamming_code[position-1];
+                end
+
+            end
+
+        end
+
+
+        // ----------------------------------------------------
+        // Default values
+        // ----------------------------------------------------
+
+        single_error = 1'b0;
+        double_error = 1'b0;
+
+        corrected_code = hamming_code;
+
+
+        // ----------------------------------------------------
+        // SECDED error classification
+        // ----------------------------------------------------
+
+        if (!parity_check && (syndrome == 0))
+        begin
+            // No error.
+            single_error = 1'b0;
+            double_error = 1'b0;
+        end
+
+        else if (parity_check && (syndrome != 0))
+        begin
+            // Single-bit error in the Hamming portion.
+            //
+            // Syndrome gives the 1-based position of the
+            // corrupted bit.
+
+            single_error = 1'b1;
+            double_error = 1'b0;
+
+            error_position = syndrome;
+
+            if (error_position <= HAMMING_WIDTH)
+            begin
+                corrected_code[error_position-1] =
+                    ~corrected_code[error_position-1];
+            end
+        end
+
+        else if (parity_check && (syndrome == 0))
+        begin
+            // Only the overall parity bit is corrupted.
+            //
+            // The actual data is already correct.
+
+            single_error = 1'b1;
+            double_error = 1'b0;
+        end
+
+        else
+        begin
+            // syndrome != 0
+            // parity_check = 0
+            //
+            // This combination indicates a double-bit error.
+            //
+            // SECDED detects the error but does NOT attempt
+            // to correct the data.
+
+            single_error = 1'b0;
+            double_error = 1'b1;
+        end
+
+
+        // ----------------------------------------------------
+        // Extract original data bits
+        // ----------------------------------------------------
+
+        data_out = {DATA_WIDTH{1'b0}};
+        data_index = 0;
+
+        for (position = 1;
+             position <= HAMMING_WIDTH;
+             position = position + 1)
+        begin
+
+            // Positions that are not powers of two contain
+            // actual data bits.
+            if ((position & (position - 1)) != 0)
+            begin
+
+                if (data_index < DATA_WIDTH)
+                begin
+                    data_out[data_index] =
+                        corrected_code[position-1];
+
+                    data_index = data_index + 1;
+                end
+
+            end
 
         end
 
     end
-
-
-    // Extract data bits
-    
-     // Remove the Hamming parity bits and overall parity bit.
-
-    assign data_out = {
-        corrected[11],
-        corrected[10],
-        corrected[9],
-        corrected[8],
-        corrected[6],
-        corrected[5],
-        corrected[4],
-        corrected[2]
-    };
 
 endmodule

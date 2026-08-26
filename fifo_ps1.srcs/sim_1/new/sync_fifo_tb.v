@@ -2,8 +2,8 @@
 
 module tb_sync_fifo;
 
-    parameter DATA_WIDTH = 8;
-    parameter DEPTH      = 16;
+    parameter DATA_WIDTH = 8;// width of data
+    parameter DEPTH = 16;// no. of FIFO entries
 
     reg clk;
     reg rst;
@@ -21,9 +21,8 @@ module tb_sync_fifo;
     wire prog_full;
     wire prog_empty;
 
-    // --------------------------------------------------
+
     // DUT
-    // --------------------------------------------------
 
     sync_fifo #(
         .DATA_WIDTH(DATA_WIDTH),
@@ -52,39 +51,35 @@ module tb_sync_fifo;
         .prog_empty(prog_empty)
     );
 
-    // --------------------------------------------------
-    // Clock
-    // --------------------------------------------------
 
+    // Clock
+
+    // 10 ns clock period.
     initial begin
         clk = 0;
         forever #5 clk = ~clk;
     end
 
-    // --------------------------------------------------
-    // Test
-    // --------------------------------------------------
+
+    // Tests
 
     integer i;
 
     initial begin
 
-        rst   = 1;
+        rst = 1;
         wr_en = 0;
         rd_en = 0;
-        din   = 0;
+        din = 0;
 
-        // Reset
+
+        // Reset FIFO before starting the tests.
         repeat (2) @(posedge clk);
         rst = 0;
 
-        $display("------------------------------------");
         $display("Starting FIFO Test");
-        $display("------------------------------------");
 
-        // =================================================
-        // TEST 1: EMPTY after reset
-        // =================================================
+        // TEST 1: Check EMPTY after reset
 
         @(negedge clk);
 
@@ -94,30 +89,25 @@ module tb_sync_fifo;
             $display("FAIL: FIFO is not EMPTY after reset");
 
 
-        // =================================================
         // TEST 2: Write 8 values
-        // =================================================
 
         for (i = 0; i < 8; i = i + 1) begin
 
             @(negedge clk);
 
             wr_en = 1;
-            din   = 8'h10 + i;
+            din = 8'h10 + i;
 
         end
 
         @(negedge clk);
 
         wr_en = 0;
-        din   = 0;
+        din = 0;
 
         $display("PASS: Wrote 8 values");
 
-
-        // =================================================
-        // TEST 3: Read 8 values
-        // =================================================
+        // TEST 3: Read the 8 values
 
         for (i = 0; i < 8; i = i + 1) begin
 
@@ -131,18 +121,14 @@ module tb_sync_fifo;
             if (dout == (8'h10 + i))
                 $display("PASS: Read %h", dout);
             else
-                $display("FAIL: Expected %h, got %h",
-                         (8'h10 + i), dout);
+                $display("FAIL: Expected %h, got %h",(8'h10 + i), dout);
 
         end
 
         @(negedge clk);
         rd_en = 0;
 
-
-        // =================================================
-        // TEST 4: EMPTY after reading everything
-        // =================================================
+        // TEST 4: Check EMPTY after reading everything
 
         @(posedge clk);
         #1;
@@ -152,24 +138,21 @@ module tb_sync_fifo;
         else
             $display("FAIL: FIFO is not EMPTY");
 
-
-        // =================================================
         // TEST 5: Fill FIFO completely
-        // =================================================
 
         for (i = 0; i < DEPTH; i = i + 1) begin
 
             @(negedge clk);
 
             wr_en = 1;
-            din   = i;
+            din = i;
 
         end
 
         @(negedge clk);
 
         wr_en = 0;
-        din   = 0;
+        din = 0;
 
         @(posedge clk);
         #1;
@@ -179,16 +162,13 @@ module tb_sync_fifo;
         else
             $display("FAIL: FIFO did not become FULL");
 
-
-        // =================================================
         // TEST 6: Attempt WRITE while FULL
-        // =================================================
 
         @(negedge clk);
 
         wr_en = 1;
         rd_en = 0;
-        din   = 8'hFF;
+        din = 8'hFF;
 
         @(posedge clk);
         #1;
@@ -202,16 +182,13 @@ module tb_sync_fifo;
         else
             $display("FAIL: FIFO no longer FULL");
 
-
-        // =================================================
         // TEST 7: Simultaneous READ + WRITE while FULL
-        // =================================================
 
         @(negedge clk);
 
         wr_en = 1;
         rd_en = 1;
-        din   = 8'hAA;
+        din = 8'hAA;
 
         @(posedge clk);
         #1;
@@ -226,11 +203,9 @@ module tb_sync_fifo;
         else
             $display("FAIL: FIFO should remain FULL");
 
-
-        // =================================================
         // TEST 8: Read FIFO completely
-        // =================================================
 
+        // Read all remaining entries from the FIFO.
         for (i = 0; i < DEPTH; i = i + 1) begin
 
             @(negedge clk);
@@ -248,10 +223,7 @@ module tb_sync_fifo;
 
         rd_en = 0;
 
-
-        // =================================================
-        // TEST 9: EMPTY at end
-        // =================================================
+        // TEST 9: Check EMPTY at the end
 
         @(posedge clk);
         #1;
@@ -261,15 +233,10 @@ module tb_sync_fifo;
         else
             $display("FAIL: FIFO is not EMPTY at end");
 
-
-        // =================================================
         // Finish
-        // =================================================
-
-        $display("------------------------------------");
+        
         $display("FIFO Test Completed");
-        $display("------------------------------------");
-
+      
         #20;
         $finish;
 

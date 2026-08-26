@@ -1,18 +1,14 @@
 `timescale 1ns/1ps
 
-// ============================================================
-// Parameterized SECDED ECC Decoder
+// Parameterized SECDED ECC decoder.
 //
-// Corrects single-bit errors and detects double-bit errors.
+// Corrects:
+//     - Any single-bit error.
 //
-// DATA_WIDTH  : Original user data width
-// PARITY_BITS : Number of Hamming parity bits
+// Detects:
+//     - Any double-bit error.
 //
-// Codeword format:
-//     Hamming code + overall parity bit
-//
-// ECC_WIDTH = DATA_WIDTH + PARITY_BITS + 1
-// ============================================================
+// The decoder does NOT attempt to correct a double-bit error.
 
 module ecc_decoder #(
     parameter DATA_WIDTH  = 8,
@@ -26,122 +22,117 @@ module ecc_decoder #(
     output reg double_error
 );
 
-    // Number of bits excluding the overall parity bit.
-    localparam HAMMING_WIDTH =
-        DATA_WIDTH + PARITY_BITS;
+    localparam HAMMING_WIDTH = DATA_WIDTH + PARITY_BITS;
 
-
-    // Received Hamming portion.
+    // Hamming portion of received codeword.
     reg [HAMMING_WIDTH-1:0] hamming_code;
 
     // Corrected Hamming portion.
     reg [HAMMING_WIDTH-1:0] corrected_code;
 
-
-    // Syndrome and overall parity result.
+    // Hamming syndrome.
     reg [PARITY_BITS-1:0] syndrome;
-    reg parity_check;
 
+    // Overall parity result.
+    reg parity_check;
 
     integer position;
     integer parity_index;
     integer data_index;
     integer error_position;
 
+    reg parity_value;
 
-    // ========================================================
-    // ECC decoding
-    // ========================================================
 
     always @(*)
     begin
 
-        // Start with the received Hamming bits.
+        // Split the received codeword.
         hamming_code = code_in[HAMMING_WIDTH-1:0];
 
-        // Calculate overall parity.
+
+        // Overall parity check.
         //
-        // For a correct codeword this XOR is zero.
-        // A value of one means an odd number of bits
-        // are different from the original codeword.
+        // 0 = even number of errors
+        // 1 = odd number of errors
+
         parity_check = ^code_in;
 
+
+        // Start with the received data unchanged.
+        corrected_code = hamming_code;
+
+        syndrome = {PARITY_BITS{1'b0}};
 
         // ----------------------------------------------------
         // Calculate Hamming syndrome
         // ----------------------------------------------------
-
-        syndrome = {PARITY_BITS{1'b0}};
 
         for (parity_index = 0;
              parity_index < PARITY_BITS;
              parity_index = parity_index + 1)
         begin
 
+            parity_value = 1'b0;
+
             for (position = 1;
                  position <= HAMMING_WIDTH;
                  position = position + 1)
             begin
 
-                // A parity bit checks all positions whose
-                // binary address contains that parity bit.
                 if ((position & (1 << parity_index)) != 0)
                 begin
-                    syndrome[parity_index] =
-                        syndrome[parity_index] ^
+                    parity_value =
+                        parity_value ^
                         hamming_code[position-1];
                 end
 
             end
 
+            syndrome[parity_index] = parity_value;
+
         end
 
 
-        // ----------------------------------------------------
-        // Default values
-        // ----------------------------------------------------
-
+        // Default status.
         single_error = 1'b0;
         double_error = 1'b0;
 
-        corrected_code = hamming_code;
-
 
         // ----------------------------------------------------
-        // SECDED error classification
+        // SECDED classification
         // ----------------------------------------------------
 
-        if (!parity_check && (syndrome == 0))
+        if ((syndrome == 0) && !parity_check)
         begin
             // No error.
+
             single_error = 1'b0;
             double_error = 1'b0;
         end
 
-        else if (parity_check && (syndrome != 0))
+        else if ((syndrome != 0) && parity_check)
         begin
             // Single-bit error in the Hamming portion.
-            //
-            // Syndrome gives the 1-based position of the
-            // corrupted bit.
 
             single_error = 1'b1;
             double_error = 1'b0;
 
             error_position = syndrome;
 
-            if (error_position <= HAMMING_WIDTH)
+            if ((error_position >= 1) &&
+                (error_position <= HAMMING_WIDTH))
             begin
                 corrected_code[error_position-1] =
                     ~corrected_code[error_position-1];
             end
         end
 
-        else if (parity_check && (syndrome == 0))
+        else if ((syndrome == 0) && parity_check)
         begin
-            // Only the overall parity bit is corrupted.
+            // Only the overall parity bit is wrong.
             //
-            // The actual data is already correct.
+            // The data itself does not need correction.
 
             single_error = 1'b1;
             double_error = 1'b0;
@@ -152,13 +143,13 @@ module ecc_decoder #(
             // syndrome != 0
             // parity_check = 0
             //
-            // This combination indicates a double-bit error.
-            //
-            // SECDED detects the error but does NOT attempt
-            // to correct the data.
+            // Even number of errors with a non-zero syndrome.
+            // For SECDED this indicates a double-bit error.
 
             single_error = 1'b0;
             double_error = 1'b1;
+
+            // Do not modify corrected_code.
         end
 
 
@@ -167,6 +158,7 @@ module ecc_decoder #(
         // ----------------------------------------------------
 
         data_out = {DATA_WIDTH{1'b0}};
+
         data_index = 0;
 
         for (position = 1;
@@ -174,8 +166,8 @@ module ecc_decoder #(
              position = position + 1)
         begin
 
-            // Positions that are not powers of two contain
-            // actual data bits.
+            // Non-power-of-two positions contain data.
+
             if ((position & (position - 1)) != 0)
             begin
 

@@ -1,29 +1,14 @@
 `timescale 1ns/1ps
 
-// ============================================================
-// Parameterized Asynchronous FIFO with SECDED ECC
-//
-// DATA_WIDTH  : User data width
-// PARITY_BITS : Hamming parity bits required for DATA_WIDTH
-// DEPTH       : Number of FIFO entries
-// SYNC_STAGES : CDC synchronizer stages
-//
-// ECC_WIDTH = DATA_WIDTH + PARITY_BITS + 1
-//
-// The FIFO uses:
-//   - Binary read/write pointers
-//   - Gray-coded pointers for CDC
-//   - Synchronizers for pointer crossing
-//   - SECDED ECC for stored data
-//   - Programmable threshold flags
-// ============================================================
-
 module async_fifo #(
-    parameter DATA_WIDTH   = 8,
-    parameter PARITY_BITS  = 4,
-    parameter DEPTH        = 16,
-    parameter ADDR_WIDTH   = $clog2(DEPTH),
-    parameter SYNC_STAGES  = 2,
+    parameter DATA_WIDTH  = 8,
+    parameter PARITY_BITS = 4,
+    parameter ECC_WIDTH   = DATA_WIDTH + PARITY_BITS + 1,
+
+    parameter DEPTH       = 16,
+    parameter ADDR_WIDTH  = $clog2(DEPTH),
+
+    parameter SYNC_STAGES = 2,
 
     parameter AFULL_LEVEL  = DEPTH-2,
     parameter AEMPTY_LEVEL = 2,
@@ -31,7 +16,7 @@ module async_fifo #(
     parameter PEMPTY_LEVEL = 4
 )(
     // --------------------------------------------------------
-    // Write interface
+    // Write side
     // --------------------------------------------------------
 
     input wire                  wr_clk,
@@ -39,20 +24,17 @@ module async_fifo #(
     input wire                  wr_en,
     input wire [DATA_WIDTH-1:0] din,
 
-
     // --------------------------------------------------------
-    // Read interface
+    // Read side
     // --------------------------------------------------------
 
     input wire                  rd_clk,
     input wire                  rd_rst,
     input wire                  rd_en,
-
     output wire [DATA_WIDTH-1:0] dout,
 
-
     // --------------------------------------------------------
-    // FIFO status
+    // Status
     // --------------------------------------------------------
 
     output wire full,
@@ -64,7 +46,6 @@ module async_fifo #(
     output wire prog_full,
     output wire prog_empty,
 
-
     // --------------------------------------------------------
     // ECC status
     // --------------------------------------------------------
@@ -74,35 +55,16 @@ module async_fifo #(
 );
 
 
-    // ========================================================
-    // ECC parameters
-    // ========================================================
+    // --------------------------------------------------------
+    // FIFO pointers
+    // --------------------------------------------------------
 
-    // One additional bit is used for overall SECDED parity.
-    localparam ECC_WIDTH =
-        DATA_WIDTH + PARITY_BITS + 1;
-
-
-    // ========================================================
-    // Binary pointers
-    // ========================================================
-
-    // Extra MSB is used to distinguish wrapped pointers.
     reg [ADDR_WIDTH:0] wr_bin;
     reg [ADDR_WIDTH:0] rd_bin;
-
-
-    // ========================================================
-    // Gray-coded pointers
-    // ========================================================
 
     reg [ADDR_WIDTH:0] wr_gray;
     reg [ADDR_WIDTH:0] rd_gray;
 
-
-    // ========================================================
-    // Next pointer values
-    // ========================================================
 
     wire [ADDR_WIDTH:0] wr_bin_next;
     wire [ADDR_WIDTH:0] rd_bin_next;
@@ -111,33 +73,28 @@ module async_fifo #(
     wire [ADDR_WIDTH:0] rd_gray_next;
 
 
-    // ========================================================
+    // --------------------------------------------------------
     // Synchronized pointers
-    // ========================================================
+    // --------------------------------------------------------
 
     wire [ADDR_WIDTH:0] wr_gray_sync;
     wire [ADDR_WIDTH:0] rd_gray_sync;
-
-
-    // ========================================================
-    // Binary versions of synchronized pointers
-    // ========================================================
 
     wire [ADDR_WIDTH:0] wr_bin_sync;
     wire [ADDR_WIDTH:0] rd_bin_sync;
 
 
-    // ========================================================
+    // --------------------------------------------------------
     // FIFO occupancy
-    // ========================================================
+    // --------------------------------------------------------
 
     wire [ADDR_WIDTH:0] wr_used;
     wire [ADDR_WIDTH:0] rd_used;
 
 
-    // ========================================================
+    // --------------------------------------------------------
     // Registered full/empty flags
-    // ========================================================
+    // --------------------------------------------------------
 
     reg full_reg;
     reg empty_reg;
@@ -146,9 +103,9 @@ module async_fifo #(
     assign empty = empty_reg;
 
 
-    // ========================================================
+    // --------------------------------------------------------
     // ECC signals
-    // ========================================================
+    // --------------------------------------------------------
 
     wire [ECC_WIDTH-1:0] mem_wr_data;
     wire [ECC_WIDTH-1:0] mem_rd_data;
@@ -158,9 +115,9 @@ module async_fifo #(
     assign dout = decoded_data;
 
 
-    // ========================================================
-    // Gray-to-binary conversion
-    // ========================================================
+    // --------------------------------------------------------
+    // Gray to binary
+    // --------------------------------------------------------
 
     function [ADDR_WIDTH:0] gray2bin;
 
@@ -172,7 +129,9 @@ module async_fifo #(
 
             gray2bin[ADDR_WIDTH] = gray[ADDR_WIDTH];
 
-            for (i = ADDR_WIDTH-1; i >= 0; i = i-1)
+            for (i = ADDR_WIDTH-1;
+                 i >= 0;
+                 i = i - 1)
             begin
                 gray2bin[i] =
                     gray2bin[i+1] ^ gray[i];
@@ -187,29 +146,24 @@ module async_fifo #(
     assign rd_bin_sync = gray2bin(rd_gray_sync);
 
 
-    // ========================================================
-    // FIFO occupancy calculation
-    // ========================================================
+    // --------------------------------------------------------
+    // Occupancy
+    // --------------------------------------------------------
 
     assign wr_used = wr_bin - rd_bin_sync;
-
     assign rd_used = wr_bin_sync - rd_bin;
 
 
-    // ========================================================
+    // --------------------------------------------------------
     // Next pointer logic
-    // ========================================================
+    // --------------------------------------------------------
 
     assign wr_bin_next =
-        wr_bin + (wr_en && !full);
+        wr_bin + ((wr_en && !full) ? 1'b1 : 1'b0);
 
     assign rd_bin_next =
-        rd_bin + (rd_en && !empty);
+        rd_bin + ((rd_en && !empty) ? 1'b1 : 1'b0);
 
-
-    // ========================================================
-    // Binary-to-Gray conversion
-    // ========================================================
 
     assign wr_gray_next =
         wr_bin_next ^ (wr_bin_next >> 1);
@@ -218,9 +172,9 @@ module async_fifo #(
         rd_bin_next ^ (rd_bin_next >> 1);
 
 
-    // ========================================================
+    // --------------------------------------------------------
     // Write pointer and FULL flag
-    // ========================================================
+    // --------------------------------------------------------
 
     always @(posedge wr_clk or posedge wr_rst)
     begin
@@ -238,9 +192,6 @@ module async_fifo #(
             wr_bin  <= wr_bin_next;
             wr_gray <= wr_gray_next;
 
-            // FIFO becomes full when the next write pointer
-            // reaches the read pointer with the wrap bits
-            // inverted.
             full_reg <=
                 (wr_gray_next ==
                 {
@@ -254,9 +205,9 @@ module async_fifo #(
     end
 
 
-    // ========================================================
+    // --------------------------------------------------------
     // Read pointer and EMPTY flag
-    // ========================================================
+    // --------------------------------------------------------
 
     always @(posedge rd_clk or posedge rd_rst)
     begin
@@ -265,7 +216,7 @@ module async_fifo #(
         begin
             rd_bin    <= 0;
             rd_gray   <= 0;
-            empty_reg <= 1;
+            empty_reg <= 1'b1;
         end
 
         else
@@ -282,41 +233,54 @@ module async_fifo #(
     end
 
 
-    // ========================================================
-    // Synchronize write pointer into read clock domain
-    // ========================================================
+    // --------------------------------------------------------
+    // Synchronize write pointer into read domain
+    // --------------------------------------------------------
 
     synchronizer #(
         .WIDTH(ADDR_WIDTH+1),
         .SYNC_STAGES(SYNC_STAGES)
-    ) wr_sync (
-        .clk (rd_clk),
-        .rst (rd_rst),
-        .din (wr_gray),
-        .dout(wr_gray_sync)
+    ) wr_sync_inst (
+        .clk  (rd_clk),
+        .rst  (rd_rst),
+        .din  (wr_gray),
+        .dout (wr_gray_sync)
     );
 
 
-    // ========================================================
-    // Synchronize read pointer into write clock domain
-    // ========================================================
+    // --------------------------------------------------------
+    // Synchronize read pointer into write domain
+    // --------------------------------------------------------
 
     synchronizer #(
         .WIDTH(ADDR_WIDTH+1),
         .SYNC_STAGES(SYNC_STAGES)
-    ) rd_sync (
-        .clk (wr_clk),
-        .rst (wr_rst),
-        .din (rd_gray),
-        .dout(rd_gray_sync)
+    ) rd_sync_inst (
+        .clk  (wr_clk),
+        .rst  (wr_rst),
+        .din  (rd_gray),
+        .dout (rd_gray_sync)
     );
 
 
-    // ========================================================
+    // --------------------------------------------------------
+    // ECC encoder
+    // --------------------------------------------------------
+
+    ecc_encoder #(
+        .DATA_WIDTH(DATA_WIDTH),
+        .PARITY_BITS(PARITY_BITS)
+    ) encoder_inst (
+
+        .data_in(din),
+        .code_out(mem_wr_data)
+
+    );
+
+
+    // --------------------------------------------------------
     // FIFO memory
-    //
-    // Memory stores the ECC codeword, not the raw data.
-    // ========================================================
+    // --------------------------------------------------------
 
     fifo_memory #(
         .DATA_WIDTH(ECC_WIDTH),
@@ -337,9 +301,26 @@ module async_fifo #(
     );
 
 
-    // ========================================================
+    // --------------------------------------------------------
+    // ECC decoder
+    // --------------------------------------------------------
+
+    ecc_decoder #(
+        .DATA_WIDTH(DATA_WIDTH),
+        .PARITY_BITS(PARITY_BITS)
+    ) decoder_inst (
+
+        .code_in      (mem_rd_data),
+        .data_out     (decoded_data),
+        .single_error (ecc_single_error),
+        .double_error (ecc_double_error)
+
+    );
+
+
+    // --------------------------------------------------------
     // Threshold flags
-    // ========================================================
+    // --------------------------------------------------------
 
     assign almost_full =
         (wr_used >= AFULL_LEVEL);
@@ -353,41 +334,5 @@ module async_fifo #(
     assign prog_empty =
         (rd_used <= PEMPTY_LEVEL);
 
-
-    // ========================================================
-    // ECC Encoder
-    //
-    // Raw user data is encoded before entering memory.
-    // ========================================================
-
-    ecc_encoder #(
-        .DATA_WIDTH(DATA_WIDTH),
-        .PARITY_BITS(PARITY_BITS)
-    ) encoder (
-
-        .data_in (din),
-        .code_out(mem_wr_data)
-
-    );
-
-
-    // ========================================================
-    // ECC Decoder
-    //
-    // Data coming from memory is decoded and corrected
-    // before being presented to the user.
-    // ========================================================
-
-    ecc_decoder #(
-        .DATA_WIDTH(DATA_WIDTH),
-        .PARITY_BITS(PARITY_BITS)
-    ) decoder (
-
-        .code_in      (mem_rd_data),
-        .data_out     (decoded_data),
-        .single_error (ecc_single_error),
-        .double_error (ecc_double_error)
-
-    );
 
 endmodule

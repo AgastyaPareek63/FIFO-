@@ -17,28 +17,17 @@ module fwft_wrapper #(
     input  wire                  rd_en
 );
 
-    // --------------------------------------------------
-    // FWFT states
-    // --------------------------------------------------
-
-    localparam IDLE        = 2'b00;
-    localparam READ_WAIT   = 2'b01;
-    localparam OUTPUT_VALID = 2'b10;
+    // FWFT control states
+    localparam IDLE  = 2'b00;
+    localparam WAIT1 = 2'b01;
+    localparam WAIT2 = 2'b10;
+    localparam VALID = 2'b11;
 
     reg [1:0] state;
 
+    // Output is available only when we have captured a FIFO word.
+    assign empty = (state != VALID);
 
-    // --------------------------------------------------
-    // From the user's point of view, the output is empty
-    // whenever we do not have a valid word available.
-    // --------------------------------------------------
-
-    assign empty = (state != OUTPUT_VALID);
-
-
-    // --------------------------------------------------
-    // Main FWFT controller
-    // --------------------------------------------------
 
     always @(posedge clk or posedge rst)
     begin
@@ -50,78 +39,68 @@ module fwft_wrapper #(
         end
         else
         begin
-            // Read request is only asserted for one cycle.
+            // Read request is normally kept low.
             fifo_rd_en <= 1'b0;
 
             case (state)
 
-                // --------------------------------------------------
-                // IDLE
-                //
-                // No word is currently available to the user.
-                // If the FIFO contains data, request the first word.
-                // --------------------------------------------------
-
+                // ------------------------------------------
+                // Wait for data to become available.
+                // ------------------------------------------
                 IDLE:
                 begin
                     if (!fifo_empty)
                     begin
+                        // Ask the FIFO for the next word.
                         fifo_rd_en <= 1'b1;
-                        state      <= READ_WAIT;
+                        state      <= WAIT1;
                     end
                 end
 
 
-                // --------------------------------------------------
-                // READ_WAIT
-                //
-                // The FIFO read has already been requested.
-                //
-                // Because fifo_rd_en is registered and the FIFO
-                // memory also has a registered read, we wait here
-                // until fifo_dout contains the requested word.
-                // --------------------------------------------------
-
-                READ_WAIT:
+                // ------------------------------------------
+                // FIFO has a registered read.
+                // First wait cycle.
+                // ------------------------------------------
+                WAIT1:
                 begin
-                    dout  <= fifo_dout;
-                    state <= OUTPUT_VALID;
+                    state <= WAIT2;
                 end
 
 
-                // --------------------------------------------------
-                // OUTPUT_VALID
-                //
-                // dout contains a valid word.
-                //
-                // The user can consume it by asserting rd_en.
-                // After consumption, request the next word if
-                // the FIFO still contains data.
-                // --------------------------------------------------
+                // ------------------------------------------
+                // Second wait cycle.
+                // fifo_dout now contains the requested word.
+                // ------------------------------------------
+                WAIT2:
+                begin
+                    dout  <= fifo_dout;
+                    state <= VALID;
+                end
 
-                OUTPUT_VALID:
+
+                // ------------------------------------------
+                // A valid word is available to the user.
+                // ------------------------------------------
+                VALID:
                 begin
                     if (rd_en)
                     begin
                         if (!fifo_empty)
                         begin
-                            // Current word is consumed and another
-                            // word is waiting in the FIFO.
+                            // Current word is consumed.
+                            // Request the next word.
                             fifo_rd_en <= 1'b1;
-                            state      <= READ_WAIT;
+                            state      <= WAIT1;
                         end
                         else
                         begin
-                            // No more data is available.
+                            // No more FIFO data.
                             state <= IDLE;
                         end
                     end
                 end
 
-
-                // --------------------------------------------------
-                // Safety fallback
-                // --------------------------------------------------
 
                 default:
                 begin

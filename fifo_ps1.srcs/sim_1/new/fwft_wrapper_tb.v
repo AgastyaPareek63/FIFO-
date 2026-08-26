@@ -8,25 +8,22 @@ module fwft_wrapper_tb;
     reg clk;
     reg rst;
 
-    // FIFO-side signals
+    // FIFO side
     reg  [DATA_WIDTH-1:0] fifo_dout;
     wire                  fifo_empty;
     wire                  fifo_rd_en;
 
-    // User-side signals
+    // User side
     reg                   rd_en;
     wire [DATA_WIDTH-1:0] dout;
     wire                  empty;
 
 
-    // --------------------------------------------------
     // DUT
-    // --------------------------------------------------
 
     fwft_wrapper #(
         .DATA_WIDTH(DATA_WIDTH)
-    )
-    dut (
+    ) dut (
         .clk        (clk),
         .rst        (rst),
 
@@ -41,9 +38,7 @@ module fwft_wrapper_tb;
     );
 
 
-    // --------------------------------------------------
     // Clock
-    // --------------------------------------------------
 
     initial
         clk = 1'b0;
@@ -51,20 +46,18 @@ module fwft_wrapper_tb;
     always #5 clk = ~clk;
 
 
-    // --------------------------------------------------
     // Simple FIFO model
-    // --------------------------------------------------
 
     reg [DATA_WIDTH-1:0] fifo_mem [0:DEPTH-1];
 
     integer rd_ptr;
     integer fifo_count;
 
-    // FIFO is empty when count reaches zero
     assign fifo_empty = (fifo_count == 0);
 
 
-    // Registered FIFO read: data appears one cycle later
+    // Registered FIFO read
+
     always @(posedge clk or posedge rst)
     begin
         if (rst)
@@ -90,9 +83,7 @@ module fwft_wrapper_tb;
     end
 
 
-    // --------------------------------------------------
-    // Output check
-    // --------------------------------------------------
+    // Check output
 
     task check_output;
 
@@ -128,9 +119,7 @@ module fwft_wrapper_tb;
     endtask
 
 
-    // --------------------------------------------------
     // Test sequence
-    // --------------------------------------------------
 
     initial
     begin
@@ -154,16 +143,16 @@ module fwft_wrapper_tb;
         fifo_count = 3;
 
 
-        $display("\n========================================");
+        $display("");
+        $display("========================================");
         $display("       FWFT FIFO VERIFICATION");
         $display("========================================");
 
 
-        // --------------------------------------------------
-        // TEST 1: First word appears automatically
-        // --------------------------------------------------
+        // TEST 1
 
-        $display("\nTEST 1: FIRST WORD FALL-THROUGH");
+        $display("");
+        $display("TEST 1: FIRST WORD");
 
         wait(empty == 1'b0);
         wait(dout == 8'hA5);
@@ -171,11 +160,10 @@ module fwft_wrapper_tb;
         check_output(8'hA5, 1'b0);
 
 
-        // --------------------------------------------------
-        // TEST 2: Consume first word
-        // --------------------------------------------------
+        // TEST 2
 
-        $display("\nTEST 2: CONSUME FIRST WORD");
+        $display("");
+        $display("TEST 2: SECOND WORD");
 
         @(negedge clk);
         rd_en = 1'b1;
@@ -183,16 +171,15 @@ module fwft_wrapper_tb;
         @(negedge clk);
         rd_en = 1'b0;
 
-        @(posedge clk);
+        wait(dout == 8'h3C);
 
         check_output(8'h3C, 1'b0);
 
 
-        // --------------------------------------------------
-        // TEST 3: Consume second word
-        // --------------------------------------------------
+        // TEST 3
 
-        $display("\nTEST 3: CONSUME SECOND WORD");
+        $display("");
+        $display("TEST 3: THIRD WORD");
 
         @(negedge clk);
         rd_en = 1'b1;
@@ -200,16 +187,15 @@ module fwft_wrapper_tb;
         @(negedge clk);
         rd_en = 1'b0;
 
-        @(posedge clk);
+        wait(dout == 8'h55);
 
         check_output(8'h55, 1'b0);
 
 
-        // --------------------------------------------------
-        // TEST 4: Consume final word
-        // --------------------------------------------------
+        // TEST 4
 
-        $display("\nTEST 4: CONSUME FINAL WORD");
+        $display("");
+        $display("TEST 4: FINAL WORD");
 
         @(negedge clk);
         rd_en = 1'b1;
@@ -217,37 +203,31 @@ module fwft_wrapper_tb;
         @(negedge clk);
         rd_en = 1'b0;
 
-        repeat(2)
-            @(posedge clk);
+        wait(empty == 1'b1);
 
-        if (empty == 1'b1)
-            $display("PASS: FIFO output is now empty");
+        if (empty)
+            $display("PASS: FIFO output is empty");
         else
-            $display("FAIL: FIFO output should be empty");
+            $display("FAIL: FIFO output is not empty");
 
 
-        // --------------------------------------------------
-        // TEST 5: No read when FIFO is empty
-        // --------------------------------------------------
+        // TEST 5
 
-        $display("\nTEST 5: EMPTY FIFO");
+        $display("");
+        $display("TEST 5: EMPTY FIFO");
 
-        if ((fifo_rd_en == 1'b0) &&
-            (empty == 1'b1))
-        begin
-            $display("PASS: No unnecessary read request");
-        end
+        #1;
+
+        if (fifo_rd_en == 1'b0 && empty == 1'b1)
+            $display("PASS: No unnecessary read");
         else
-        begin
-            $display("FAIL: Unexpected read request or invalid output");
-        end
+            $display("FAIL: Unexpected read request");
 
 
-        // --------------------------------------------------
-        // TEST 6: FWFT after FIFO refill
-        // --------------------------------------------------
+        // TEST 6
 
-        $display("\nTEST 6: REFILL AFTER EMPTY");
+        $display("");
+        $display("TEST 6: REFILL");
 
         fifo_mem[3] = 8'hF0;
         fifo_count = 1;
@@ -258,13 +238,10 @@ module fwft_wrapper_tb;
         check_output(8'hF0, 1'b0);
 
 
-        // --------------------------------------------------
-        // Finish
-        // --------------------------------------------------
-
         #20;
 
-        $display("\n========================================");
+        $display("");
+        $display("========================================");
         $display("       FWFT VERIFICATION COMPLETE");
         $display("========================================");
 

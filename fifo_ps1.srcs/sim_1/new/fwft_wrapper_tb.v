@@ -2,21 +2,23 @@
 
 module fwft_wrapper_tb;
 
-    parameter DATA_WIDTH = 8;
-    parameter DEPTH      = 4;
+    parameter DATA_WIDTH = 8;// width of data
+    parameter DEPTH = 4;// no. of FIFO entries
 
     reg clk;
     reg rst;
 
     // FIFO side
-    reg  [DATA_WIDTH-1:0] fifo_dout;
-    wire                  fifo_empty;
-    wire                  fifo_rd_en;
+
+    reg [DATA_WIDTH-1:0] fifo_dout;
+    wire fifo_empty;
+    wire fifo_rd_en;
 
     // User side
-    reg                   rd_en;
-    wire [DATA_WIDTH-1:0] dout;
-    wire                  empty;
+
+    reg rd_en;
+    wire[DATA_WIDTH-1:0] dout;
+    wire empty;
 
 
     // DUT
@@ -24,27 +26,25 @@ module fwft_wrapper_tb;
     fwft_wrapper #(
         .DATA_WIDTH(DATA_WIDTH)
     ) dut (
-        .clk        (clk),
-        .rst        (rst),
+        .clk(clk),
+        .rst(rst),
 
-        .fifo_dout  (fifo_dout),
-        .fifo_empty (fifo_empty),
-        .fifo_rd_en (fifo_rd_en),
+        .fifo_dout(fifo_dout),
+        .fifo_empty(fifo_empty),
+        .fifo_rd_en(fifo_rd_en),
 
-        .dout       (dout),
-        .empty      (empty),
+        .dout(dout),
+        .empty(empty),
 
-        .rd_en      (rd_en)
+        .rd_en(rd_en)
     );
 
-
-    // Clock
-
+    // 10 ns clock period.
+    
     initial
         clk = 1'b0;
 
     always #5 clk = ~clk;
-
 
     // Simple FIFO model
 
@@ -53,6 +53,7 @@ module fwft_wrapper_tb;
     integer rd_ptr;
     integer fifo_count;
 
+    // FIFO is empty when no entries remain.
     assign fifo_empty = (fifo_count == 0);
 
 
@@ -62,62 +63,56 @@ module fwft_wrapper_tb;
     begin
         if (rst)
         begin
-            rd_ptr     <= 0;
+            rd_ptr <= 0;
             fifo_count <= 0;
-            fifo_dout  <= 0;
+            fifo_dout <= 0;
         end
         else
         begin
             if (fifo_rd_en && fifo_count != 0)
             begin
+                // Present the next FIFO word on fifo_dout.
                 fifo_dout <= fifo_mem[rd_ptr];
 
+                // Move to the next FIFO location.
                 if (rd_ptr == DEPTH-1)
                     rd_ptr <= 0;
                 else
                     rd_ptr <= rd_ptr + 1;
 
+                // One FIFO entry consumed.
                 fifo_count <= fifo_count - 1;
             end
         end
     end
 
 
-    // Check output
-
+    // Output check
+    // Check both the data presented to the user and the FWFT empty status.
+    
     task check_output;
 
-        input [DATA_WIDTH-1:0] expected_data;
-        input                  expected_empty;
+        input[DATA_WIDTH-1:0] expected_data;
+        input expected_empty;
 
         begin
 
-            if ((dout === expected_data) &&
-                (empty === expected_empty))
+            if ((dout === expected_data) &&(empty === expected_empty))
             begin
-                $display(
-                    "PASS: time=%0t | DOUT=%h | EMPTY=%b",
-                    $time,
-                    dout,
-                    empty
-                );
+
+                $display("PASS: time=%0t | DOUT=%h | EMPTY=%b",$time,dout,empty);
+
             end
             else
             begin
-                $display(
-                    "FAIL: time=%0t | Expected DOUT=%h EMPTY=%b | Got DOUT=%h EMPTY=%b",
-                    $time,
-                    expected_data,
-                    expected_empty,
-                    dout,
-                    empty
-                );
+
+                $display("FAIL: time=%0t | Expected DOUT=%h EMPTY=%b | Got DOUT=%h EMPTY=%b",$time,expected_data,expected_empty,dout,empty);
+
             end
 
         end
 
     endtask
-
 
     // Test sequence
 
@@ -128,14 +123,18 @@ module fwft_wrapper_tb;
         rd_en = 1'b0;
 
         fifo_dout  = 0;
-        rd_ptr     = 0;
+        rd_ptr = 0;
         fifo_count = 0;
 
+
         #20;
+
         rst = 1'b0;
 
 
         // Load test data
+        // Add three known words to the simulated FIFO.
+        
         fifo_mem[0] = 8'hA5;
         fifo_mem[1] = 8'h3C;
         fifo_mem[2] = 8'h55;
@@ -143,15 +142,11 @@ module fwft_wrapper_tb;
         fifo_count = 3;
 
 
-        $display("");
-        $display("========================================");
-        $display("       FWFT FIFO VERIFICATION");
-        $display("========================================");
+        $display("FWFT FIFO VERIFICATION");
 
 
-        // TEST 1
+        // TEST 1: FIRST WORD
 
-        $display("");
         $display("TEST 1: FIRST WORD");
 
         wait(empty == 1'b0);
@@ -160,9 +155,9 @@ module fwft_wrapper_tb;
         check_output(8'hA5, 1'b0);
 
 
-        // TEST 2
-
-        $display("");
+        // TEST 2: SECOND WORD
+        // Consume the first word and wait for the second 
+        
         $display("TEST 2: SECOND WORD");
 
         @(negedge clk);
@@ -175,10 +170,9 @@ module fwft_wrapper_tb;
 
         check_output(8'h3C, 1'b0);
 
-
-        // TEST 3
-
-        $display("");
+        // TEST 3: THIRD WORD
+        // Consume the second word and check the third word.
+        
         $display("TEST 3: THIRD WORD");
 
         @(negedge clk);
@@ -192,9 +186,9 @@ module fwft_wrapper_tb;
         check_output(8'h55, 1'b0);
 
 
-        // TEST 4
+        // TEST 4: FINAL WORD
+        // Consume the final word and verify that the
 
-        $display("");
         $display("TEST 4: FINAL WORD");
 
         @(negedge clk);
@@ -211,8 +205,8 @@ module fwft_wrapper_tb;
             $display("FAIL: FIFO output is not empty");
 
 
-        // TEST 5
-
+        // TEST 5: EMPTY FIFO
+        // When the FIFO is empty, the wrapper should not generate unnecessary read requests.
         $display("");
         $display("TEST 5: EMPTY FIFO");
 
@@ -223,10 +217,9 @@ module fwft_wrapper_tb;
         else
             $display("FAIL: Unexpected read request");
 
+        // TEST 6: REFILL
+        // Add another word after the FIFO becomes empty
 
-        // TEST 6
-
-        $display("");
         $display("TEST 6: REFILL");
 
         fifo_mem[3] = 8'hF0;
@@ -237,14 +230,9 @@ module fwft_wrapper_tb;
 
         check_output(8'hF0, 1'b0);
 
-
         #20;
 
-        $display("");
-        $display("========================================");
-        $display("       FWFT VERIFICATION COMPLETE");
-        $display("========================================");
-
+        $display("FWFT VERIFICATION COMPLETE");
         $finish;
 
     end
